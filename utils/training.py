@@ -14,6 +14,7 @@ def train_one_epoch(net : torch.nn.Module,
                     optimizer : torch.optim.Optimizer = None, 
                     scheduler : torch.optim.lr_scheduler._LRScheduler = None,
                     device : str = 'cpu', 
+                    lower_precision=False,
                     scaler = torch.cuda.amp.GradScaler(), 
                     prefix : str = ''):
     """Train the given model for one epoch, over the given dataset
@@ -46,55 +47,104 @@ def train_one_epoch(net : torch.nn.Module,
     tot_images=0
     start_time = time.time()
 
-    for batch_idx, batch in enumerate(dataloader_train):
-        images = batch[0].to(device)
-        targets = batch[1].to(device)
+    if not lower_precision:
 
-        optimizer.zero_grad()
+        for batch_idx, batch in enumerate(dataloader_train):
+            images = batch[0].to(device)
+            targets = batch[1].to(device)
 
-        with torch.autocast(device_type='cuda'):#, dtype=torch.float16):  # 16 bit precision (for using less memory)
-            
-            # Compute prediction (forward input in the model)
-            outputs = net(images)
+            optimizer.zero_grad()
 
-            # Compute prediction error with the loss function
-            error = loss_function(outputs, targets)
+            with torch.autocast(device_type='cuda'):#, dtype=torch.float16):  # 16 bit precision (for using less memory)
+                
+                # Compute prediction (forward input in the model)
+                outputs = net(images)
 
-        # Backpropagation
-        net.zero_grad()
-        error.backward()
-        #scaler.scale(error).backward()
+                # Compute prediction error with the loss function
+                error = loss_function(outputs, targets)
 
-        # Optimizer step
-        optimizer.step()
-        #scaler.step(optimizer)
-        #scaler.update()
+            # Backpropagation
+            net.zero_grad()
+            error.backward()
+            #scaler.scale(error).backward()
 
-        tot_error += error*len(targets)      # weighted average
-        tot_images += len(targets)
+            # Optimizer step
+            optimizer.step()
+            #scaler.step(optimizer)
+            #scaler.update()
 
-        loss = tot_error/tot_images
+            tot_error += error*len(targets)      # weighted average
+            tot_images += len(targets)
 
-        # Update of the LR, according to the given scheduler (update after each batch)
-        if scheduler is not None:
-            # print('UPDATE BATCH')
-            scheduler.step()
+            loss = tot_error/tot_images
 
-        epoch_time = time.time() - start_time
-        batch_time = epoch_time/(batch_idx+1)
+            # Update of the LR, according to the given scheduler (update after each batch)
+            if scheduler is not None:
+                # print('UPDATE BATCH')
+                scheduler.step()
 
-        print(prefix + f"{batch_idx+1}/{len(dataloader_train)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, lr: {optimizer.param_groups[0]['lr']:.3g}, loss: {loss:.3g}".ljust(80), end = '\r')
+            epoch_time = time.time() - start_time
+            batch_time = epoch_time/(batch_idx+1)
 
-    print(prefix + f"{batch_idx+1}/{len(dataloader_train)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, lr: {optimizer.param_groups[0]['lr']:.3g}, loss: {loss:.3g}".ljust(80))
-    loss_np = (loss).detach().cpu().numpy()
+            print(prefix + f"{batch_idx+1}/{len(dataloader_train)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, lr: {optimizer.param_groups[0]['lr']:.3g}, loss: {loss:.3g}".ljust(80), end = '\r')
 
-    return loss_np
+        print(prefix + f"{batch_idx+1}/{len(dataloader_train)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, lr: {optimizer.param_groups[0]['lr']:.3g}, loss: {loss:.3g}".ljust(80))
+        loss_np = (loss).detach().cpu().numpy()
+
+        return loss_np
+
+    else:
+
+        for batch_idx, batch in enumerate(dataloader_train):
+            images = batch[0].to(device)
+            targets = batch[1].to(device)
+
+            optimizer.zero_grad()
+
+            with torch.autocast(device_type='cuda', dtype=torch.float16):  # 16 bit precision (for using less memory)
+                
+                # Compute prediction (forward input in the model)
+                outputs = net(images)
+
+                # Compute prediction error with the loss function
+                error = loss_function(outputs, targets)
+
+            # Backpropagation
+            net.zero_grad()
+            #error.backward()
+            scaler.scale(error).backward()
+
+            # Optimizer step
+            #optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
+
+            tot_error += error*len(targets)      # weighted average
+            tot_images += len(targets)
+
+            loss = tot_error/tot_images
+
+            # Update of the LR, according to the given scheduler (update after each batch)
+            if scheduler is not None:
+                # print('UPDATE BATCH')
+                scheduler.step()
+
+            epoch_time = time.time() - start_time
+            batch_time = epoch_time/(batch_idx+1)
+
+            print(prefix + f"{batch_idx+1}/{len(dataloader_train)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, lr: {optimizer.param_groups[0]['lr']:.3g}, loss: {loss:.3g}".ljust(80), end = '\r')
+
+        print(prefix + f"{batch_idx+1}/{len(dataloader_train)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, lr: {optimizer.param_groups[0]['lr']:.3g}, loss: {loss:.3g}".ljust(80))
+        loss_np = (loss).detach().cpu().numpy()
+
+        return loss_np
 
 
 def validate(net : torch.nn.Module, 
              dataloader_val : torch.utils.data.DataLoader, 
              loss_function : torch.nn.Module, 
              device : str = 'cpu', 
+             lower_precision=False,
              prefix=''):
     """Evaluate the given model on the given dataset.
 
@@ -119,33 +169,65 @@ def validate(net : torch.nn.Module,
     tot_images=0
     start_time = time.time()
 
-    with torch.no_grad():
-        for batch_idx, batch in enumerate(dataloader_val):
-            images = batch[0].to(device)
-            targets = batch[1].to(device)
+    if not lower_precision:
 
-            with torch.autocast(device_type='cuda'):#, dtype=torch.float16):
-                
-                # Compute prediction (forward input in the model)
-                outputs = net(images)
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(dataloader_val):
+                images = batch[0].to(device)
+                targets = batch[1].to(device)
 
-                # Compute prediction error with the loss function
-                error = loss_function(outputs, targets)
+                with torch.autocast(device_type='cuda'):#, dtype=torch.float16):
+                    
+                    # Compute prediction (forward input in the model)
+                    outputs = net(images)
 
-            tot_error += error*len(targets)      # weighted average
-            tot_images += len(targets)
+                    # Compute prediction error with the loss function
+                    error = loss_function(outputs, targets)
 
-            loss = tot_error/tot_images
+                tot_error += error*len(targets)      # weighted average
+                tot_images += len(targets)
 
-            epoch_time = time.time() - start_time
-            batch_time = epoch_time/(batch_idx+1)
+                loss = tot_error/tot_images
 
-            print(prefix + f'{batch_idx+1}/{len(dataloader_val)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, loss: {loss:.3g}'.ljust(80), end = '\r')
+                epoch_time = time.time() - start_time
+                batch_time = epoch_time/(batch_idx+1)
 
-    print(prefix + f'{batch_idx+1}/{len(dataloader_val)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, loss: {loss:.3g}'.ljust(80))
-    loss_np = (loss).detach().cpu().numpy()
+                print(prefix + f'{batch_idx+1}/{len(dataloader_val)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, loss: {loss:.3g}'.ljust(80), end = '\r')
 
-    return loss_np
+        print(prefix + f'{batch_idx+1}/{len(dataloader_val)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, loss: {loss:.3g}'.ljust(80))
+        loss_np = (loss).detach().cpu().numpy()
+
+        return loss_np
+
+    else:
+
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(dataloader_val):
+                images = batch[0].to(device)
+                targets = batch[1].to(device)
+
+                with torch.autocast(device_type='cuda'):#, dtype=torch.float16):
+                    
+                    # Compute prediction (forward input in the model)
+                    outputs = net(images)
+
+                    # Compute prediction error with the loss function
+                    error = loss_function(outputs, targets)
+
+                tot_error += error*len(targets)      # weighted average
+                tot_images += len(targets)
+
+                loss = tot_error/tot_images
+
+                epoch_time = time.time() - start_time
+                batch_time = epoch_time/(batch_idx+1)
+
+                print(prefix + f'{batch_idx+1}/{len(dataloader_val)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, loss: {loss:.3g}'.ljust(80), end = '\r')
+
+        print(prefix + f'{batch_idx+1}/{len(dataloader_val)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, loss: {loss:.3g}'.ljust(80))
+        loss_np = (loss).detach().cpu().numpy()
+
+        return loss_np
 
 
 def train_model(net : torch.nn.Module,
@@ -156,6 +238,7 @@ def train_model(net : torch.nn.Module,
                 optimizer : torch.optim.Optimizer = None,
                 scheduler : torch.optim.lr_scheduler._LRScheduler = None,  
                 device : torch.device = None,
+                lower_precision=False,
                 checkpoint_folder : str = None,
                 additional_info : dict = {},
                 checkpoint_step : int = 1,
@@ -263,6 +346,7 @@ def train_model(net : torch.nn.Module,
                                       scheduler=None if (scheduler is None or not scheduler_update_each_batch) else  scheduler, 
                                       device=device, 
                                       scaler=scaler,
+                                      lower_precision=lower_precision,
                                       prefix='\tTrain ')
         loss_history.append(train_loss)
 
@@ -271,6 +355,7 @@ def train_model(net : torch.nn.Module,
                             dataloader_val=dataloader_val, 
                             loss_function=loss_function, 
                             device=device,
+                            lower_precision=lower_precision,
                             prefix='\tVal ')
         loss_history_val.append(val_loss)
 
