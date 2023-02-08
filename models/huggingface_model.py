@@ -380,7 +380,7 @@ class HuggingFaceModel(nn.Module):
         # Determine the number of channels for the first UNet stage
         # init_dim = default(init_dim, dim // 3 * 2)
         init_dim = default(init_dim, dim // 8)
-        self.init_conv = nn.Conv2d(in_channels, init_dim, 7, padding=3, device=device)
+        self.init_conv = nn.Conv2d(in_channels, init_dim, 7, padding=3, stride=2, device=device)  # Added stride 2
         """init_dim = default(init_dim, dim // 8)
         self.init_conv1 = nn.Conv2d(in_channels, init_dim, 3, padding=1, stride=2, device=device)
         self.init_conv2 = nn.Conv2d(init_dim, 2*init_dim, 3, padding=1, stride=2, device=device)
@@ -474,8 +474,9 @@ class HuggingFaceModel(nn.Module):
         out_dim = default(out_dim, in_channels)
         # Final convolution
         self.final_conv = nn.Sequential(
-            # block_klass(dim, dim), nn.Conv2d(init_dim, out_dim, 1, device=device)
-            block_klass(init_dim, init_dim), nn.Conv2d(init_dim, out_dim, 1, device=device)
+            # block_klass(dim, dim), nn.Conv2d(init_dim, out_dim, 1, device=device)                              
+            block_klass(init_dim, init_dim),
+            nn.ConvTranspose2d(in_channels=init_dim, out_channels=out_dim, kernel_size=3, stride=2, device=device)  # Ad transposed
         )
 
     def forward(self, x):
@@ -484,7 +485,7 @@ class HuggingFaceModel(nn.Module):
         """x = self.init_conv1(x)
         x = self.init_conv2(x)
         print(x.shape)"""
-        print(x.shape)
+        #print(x.shape)
 
         # List storing the output tensors after each down UNet stage
         h = []
@@ -496,13 +497,13 @@ class HuggingFaceModel(nn.Module):
             x = attn(x)
             h.append(x)
             x = downsample(x)
-            print(x.shape)
+            #print(x.shape)
 
         # Bottleneck
         x = self.mid_block1(x)
         x = self.mid_attn(x)
         x = self.mid_block2(x)
-        print(x.shape)
+        #print(x.shape)
 
         # Up UNet stages
         for block1, block2, attn, upsample in self.ups:
@@ -511,7 +512,7 @@ class HuggingFaceModel(nn.Module):
             x = block2(x)
             x = attn(x)
             x = upsample(x)
-            print(x.shape)
+            #print(x.shape)
 
         # Final convolution
         return self.final_conv(x)
