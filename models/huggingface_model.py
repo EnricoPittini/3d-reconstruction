@@ -447,7 +447,7 @@ class HuggingFaceModel(nn.Module):
         mid_dim = dims[-1]
         self.mid_block1 = block_klass(mid_dim, mid_dim)
         # TODO : remember this change
-        self.mid_attn = Residual(PreNorm(mid_dim, LinearAttention(mid_dim, device=device))) #Residual(PreNorm(mid_dim, Attention(mid_dim)))
+        self.mid_attn = Residual(PreNorm(mid_dim, LinearAttention(mid_dim, device=device), device=device)) #Residual(PreNorm(mid_dim, Attention(mid_dim)))
         self.mid_block2 = block_klass(mid_dim, mid_dim)
 
         # Up UNet stages
