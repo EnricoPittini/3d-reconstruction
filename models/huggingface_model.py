@@ -379,9 +379,10 @@ class HuggingFaceModel(nn.Module):
 
         # Determine the number of channels for the first UNet stage
         # init_dim = default(init_dim, dim // 3 * 2)
-        init_dim = default(init_dim, dim // 8)  # 16
+        init_dim = default(init_dim, dim // 16)  # 8
         self.init_conv = nn.Conv2d(in_channels, init_dim, 7, padding=3, stride=2, device=device)  # Added stride 2
-        #self.init_conv1 = nn.Conv2d(init_dim, 2*init_dim, 7, padding=3, stride=2, device=device)  # Added another stride 2
+        self.init_conv1 = nn.Conv2d(init_dim, 2*init_dim, 7, padding=3, stride=2, device=device)  # Added another stride 2
+        init_dim = 2*init_dim
         """init_dim = default(init_dim, dim // 8)
         self.init_conv1 = nn.Conv2d(in_channels, init_dim, 3, padding=1, stride=2, device=device)
         self.init_conv2 = nn.Conv2d(init_dim, 2*init_dim, 3, padding=1, stride=2, device=device)
@@ -477,12 +478,14 @@ class HuggingFaceModel(nn.Module):
         self.final_conv = nn.Sequential(
             # block_klass(dim, dim), nn.Conv2d(init_dim, out_dim, 1, device=device)                              
             block_klass(init_dim, init_dim),
-            nn.ConvTranspose2d(in_channels=init_dim, out_channels=out_dim, kernel_size=3, stride=2, device=device)  # Ad transposed
+            nn.ConvTranspose2d(in_channels=init_dim, out_channels=init_dim//2, kernel_size=2, padding=0, stride=2, device=device),  # Add another transposed
+            nn.ConvTranspose2d(in_channels=init_dim//2, out_channels=out_dim, kernel_size=2, padding=0, stride=2, device=device)  # Add transposed
         )
 
     def forward(self, x):
         # Initial convolution on the image tensor
         x = self.init_conv(x)
+        x = self.init_conv1(x)
         """x = self.init_conv1(x)
         x = self.init_conv2(x)
         print(x.shape)"""
