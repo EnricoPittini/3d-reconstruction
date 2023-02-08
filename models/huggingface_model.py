@@ -365,6 +365,7 @@ class HuggingFaceModel(nn.Module):
         out_dim=None,
         dim_mults=(1, 2, 4, 8),
         in_channels=3,
+        n_stem_layers=3,
         resnet_block_groups=6, # 8
         use_convnext=True,
         convnext_mult=2,
@@ -380,10 +381,17 @@ class HuggingFaceModel(nn.Module):
         # Determine the number of channels for the first UNet stage
         # init_dim = default(init_dim, dim // 3 * 2)
         init_dim = default(init_dim, dim // 40)  # 8, 16, 32, 40
-        self.init_conv = nn.Conv2d(in_channels, init_dim, 7, padding=3, stride=2, device=device)  # Added stride 2
+        self.init_conv_list = nn.ModuleList([])
+        for i in range(n_stem_layers):
+            if i==0:
+                self.init_conv_list.append(nn.Conv2d(in_channels, init_dim, 7, padding=3, stride=2, device=device))
+            else:
+                self.init_conv_list.append(nn.Conv2d(i*init_dim, (i+1)*init_dim, 7, padding=3, stride=2, device=device))
+        init_dim = n_stem_layers*init_dim
+        """self.init_conv = nn.Conv2d(in_channels, init_dim, 7, padding=3, stride=2, device=device)  # Added stride 2
         self.init_conv1 = nn.Conv2d(init_dim, 2*init_dim, 7, padding=3, stride=2, device=device)  # Added another stride 2
         self.init_conv2 = nn.Conv2d(2*init_dim, 3*init_dim, 7, padding=3, stride=2, device=device)  # Added another stride 2
-        init_dim = 3*init_dim
+        init_dim = 3*init_dim"""
         """init_dim = default(init_dim, dim // 8)
         self.init_conv1 = nn.Conv2d(in_channels, init_dim, 3, padding=1, stride=2, device=device)
         self.init_conv2 = nn.Conv2d(init_dim, 2*init_dim, 3, padding=1, stride=2, device=device)
@@ -476,19 +484,29 @@ class HuggingFaceModel(nn.Module):
         # Number of output channels
         out_dim = default(out_dim, 1)
         # Final convolution
-        self.final_conv = nn.Sequential(
+        self.final_conv_list = nn.ModuleList([])
+        self.final_conv_list.append(block_klass(init_dim, init_dim))
+        for i in range(n_stem_layers): 
+            if i==n_stem_layers-1:
+                self.final_conv_list.append(nn.ConvTranspose2d(in_channels=init_dim//n_stem_layers, out_channels=out_dim, kernel_size=2, padding=0, stride=2, device=device))
+            else:
+                self.final_conv_list.append(nn.ConvTranspose2d(in_channels=(n_stem_layers-i)*init_dim//n_stem_layers, out_channels=(n_stem_layers-i-1)*init_dim//n_stem_layers, kernel_size=2, padding=0, stride=2, device=device))
+
+        """self.final_conv = nn.Sequential(
             # block_klass(dim, dim), nn.Conv2d(init_dim, out_dim, 1, device=device)                              
             block_klass(init_dim, init_dim),
             nn.ConvTranspose2d(in_channels=init_dim, out_channels=2*init_dim//3, kernel_size=2, padding=0, stride=2, device=device),  # Add another transposed
             nn.ConvTranspose2d(in_channels=2*init_dim//3, out_channels=init_dim//3, kernel_size=2, padding=0, stride=2, device=device),  # Add another transposed
             nn.ConvTranspose2d(in_channels=init_dim//3, out_channels=out_dim, kernel_size=2, padding=0, stride=2, device=device)  # Add transposed
-        )
+        )"""
 
     def forward(self, x):
         # Initial convolution on the image tensor
-        x = self.init_conv(x)
+        for init_conv in self.init_conv_list:
+            x = init_conv(x)
+        """x = self.init_conv(x)
         x = self.init_conv1(x)
-        x = self.init_conv2(x)
+        x = self.init_conv2(x)"""
         """x = self.init_conv1(x)
         x = self.init_conv2(x)
         print(x.shape)"""
@@ -522,4 +540,7 @@ class HuggingFaceModel(nn.Module):
             #print(x.shape)
 
         # Final convolution
-        return self.final_conv(x)
+        #return self.final_conv(x)
+        for final_conv in self.final_conv_list:
+            x = final_conv(x)
+        return x
