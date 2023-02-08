@@ -474,7 +474,7 @@ class HuggingFaceModel(nn.Module):
             )
 
         # Number of output channels
-        out_dim = default(out_dim, in_channels)
+        out_dim = default(out_dim, 1)
         # Final convolution
         self.final_conv = nn.Sequential(
             # block_klass(dim, dim), nn.Conv2d(init_dim, out_dim, 1, device=device)                              
