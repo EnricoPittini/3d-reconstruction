@@ -47,6 +47,8 @@ def train_one_epoch(net : torch.nn.Module,
     tot_images=0
     start_time = time.time()
 
+    torch.cuda.empty_cache()
+
     if not lower_precision:
 
         for batch_idx, batch in enumerate(dataloader_train):
@@ -90,6 +92,8 @@ def train_one_epoch(net : torch.nn.Module,
 
         print(prefix + f"{batch_idx+1}/{len(dataloader_train)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, lr: {optimizer.param_groups[0]['lr']:.3g}, loss: {loss:.3g}".ljust(80))
         loss_np = (loss).detach().cpu().numpy()
+
+        torch.cuda.empty_cache()
 
         return loss_np
 
@@ -137,6 +141,8 @@ def train_one_epoch(net : torch.nn.Module,
         print(prefix + f"{batch_idx+1}/{len(dataloader_train)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, lr: {optimizer.param_groups[0]['lr']:.3g}, loss: {loss:.3g}".ljust(80))
         loss_np = (loss).detach().cpu().numpy()
 
+        torch.cuda.empty_cache()
+
         return loss_np
 
 
@@ -169,6 +175,8 @@ def validate(net : torch.nn.Module,
     tot_images=0
     start_time = time.time()
 
+    torch.cuda.empty_cache()
+
     if not lower_precision:
 
         with torch.no_grad():
@@ -196,6 +204,8 @@ def validate(net : torch.nn.Module,
 
         print(prefix + f'{batch_idx+1}/{len(dataloader_val)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, loss: {loss:.3g}'.ljust(80))
         loss_np = (loss).detach().cpu().numpy()
+
+        torch.cuda.empty_cache()
 
         return loss_np
 
@@ -226,6 +236,8 @@ def validate(net : torch.nn.Module,
 
         print(prefix + f'{batch_idx+1}/{len(dataloader_val)}, {epoch_time:.0f}s {batch_time*1e3:.0f}ms/step, loss: {loss:.3g}'.ljust(80))
         loss_np = (loss).detach().cpu().numpy()
+
+        torch.cuda.empty_cache()
 
         return loss_np
 
@@ -292,6 +304,8 @@ def train_model(net : torch.nn.Module,
     print(f"Device: {device}")
 
     net = net.double()
+
+    torch.cuda.empty_cache()
 
     if optimizer is None:
         optimizer = optim.Adam(net.parameters())
@@ -380,5 +394,7 @@ def train_model(net : torch.nn.Module,
                                 keep_best=keep_best, verbose=verbose)
 
     print('\nTraining done.')
+
+    torch.cuda.empty_cache()
 
     return checkpoint_dict
